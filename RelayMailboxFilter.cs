@@ -14,22 +14,23 @@ public sealed class RelayMailboxFilter(IConfiguration configuration, ILogger<Rel
         int size,
         CancellationToken cancellationToken)
     {
+        var sender = MailboxAddress(from);
+
         var allowedSenders = GetConfiguredList("Relay:AllowedSenders");
         if (allowedSenders.Count == 0)
         {
-            logger.LogWarning("No Relay:AllowedSenders configured. Rejecting sender {Sender}", from.ToString());
+            logger.LogWarning("No Relay:AllowedSenders configured. Rejecting sender {Sender}", sender);
             return Task.FromResult(false);
         }
 
-        var sender = NormalizeAddress(from.ToString() ?? string.Empty);
-        var isAllowed = allowedSenders.Contains(sender, StringComparer.OrdinalIgnoreCase);
-
-        if (!isAllowed)
+        if (allowedSenders.Contains(sender, StringComparer.OrdinalIgnoreCase))
         {
-            logger.LogWarning("Rejected MAIL FROM {Sender}", sender);
+            logger.LogInformation("Accepted MAIL FROM {Sender}", sender);
+            return Task.FromResult(true);
         }
 
-        return Task.FromResult(isAllowed);
+        logger.LogWarning("Rejected MAIL FROM {Sender}", sender);
+        return Task.FromResult(false);
     }
 
     public Task<bool> CanDeliverToAsync(
@@ -38,23 +39,26 @@ public sealed class RelayMailboxFilter(IConfiguration configuration, ILogger<Rel
         IMailbox from,
         CancellationToken cancellationToken)
     {
+        var recipient = MailboxAddress(to);
+
         var allowedRecipientDomains = GetConfiguredList("Relay:AllowedRecipientDomains");
 
         if (allowedRecipientDomains.Count == 0)
         {
+            logger.LogInformation("Accepted RCPT TO {Recipient}", recipient);
             return Task.FromResult(true);
         }
 
-        var recipient = NormalizeAddress(to.ToString() ?? string.Empty);
-        var domain = recipient.Split('@').LastOrDefault() ?? string.Empty;
-        var isAllowed = allowedRecipientDomains.Contains(domain, StringComparer.OrdinalIgnoreCase);
+        var domain = to.Host?.Trim().ToLowerInvariant() ?? string.Empty;
 
-        if (!isAllowed)
+        if (allowedRecipientDomains.Contains(domain, StringComparer.OrdinalIgnoreCase))
         {
-            logger.LogWarning("Rejected RCPT TO {Recipient}", recipient);
+            logger.LogInformation("Accepted RCPT TO {Recipient}", recipient);
+            return Task.FromResult(true);
         }
 
-        return Task.FromResult(isAllowed);
+        logger.LogWarning("Rejected RCPT TO {Recipient}", recipient);
+        return Task.FromResult(false);
     }
 
     private HashSet<string> GetConfiguredList(string key)
@@ -69,5 +73,12 @@ public sealed class RelayMailboxFilter(IConfiguration configuration, ILogger<Rel
     private static string NormalizeAddress(string value)
     {
         return value.Trim().Trim('<', '>').ToLowerInvariant();
+    }
+
+    private static string MailboxAddress(IMailbox mailbox)
+    {
+        var user = mailbox.User ?? string.Empty;
+        var host = mailbox.Host ?? string.Empty;
+        return $"{user}@{host}".Trim().ToLowerInvariant();
     }
 }

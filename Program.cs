@@ -20,7 +20,6 @@ builder.Services.AddHttpClient<GraphMailSender>(client =>
     client.Timeout = TimeSpan.FromSeconds(60);
 });
 
-builder.Services.AddSingleton<GraphMailSender>();
 builder.Services.AddSingleton<RelayMailboxFilter>();
 builder.Services.AddSingleton<RelayMessageStore>();
 builder.Services.AddHostedService<SmtpRelayHostedService>();
